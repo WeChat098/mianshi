@@ -1,15 +1,21 @@
 package com.yhzhang.mianshiya.model.dto.user;
 
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.yhzhang.mianshiya.common.PageRequest;
 import java.io.Serializable;
+import java.util.Date;
+
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
 /**
  * 用户查询请求
  *
- * @author <a href="https://github.com/liyupi">程序员鱼皮</a>
- * @from <a href="https://yupi.icu">编程导航知识星球</a>
+ * @author <a href="https://github.com/WeChat098">程序员yhzhang</a>
+
  */
 @EqualsAndHashCode(callSuper = true)
 @Data
@@ -19,8 +25,10 @@ public class UserQueryRequest extends PageRequest implements Serializable {
      */
     private Long id;
 
+
+
     /**
-     * 开放平台id
+     * 微信开放平台id
      */
     private String unionId;
 
@@ -34,15 +42,13 @@ public class UserQueryRequest extends PageRequest implements Serializable {
      */
     private String userName;
 
-    /**
-     * 简介
-     */
-    private String userProfile;
 
     /**
      * 用户角色：user/admin/ban
      */
     private String userRole;
+
+
 
     private static final long serialVersionUID = 1L;
 }

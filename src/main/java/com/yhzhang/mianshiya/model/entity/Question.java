@@ -1,24 +1,18 @@
 package com.yhzhang.mianshiya.model.entity;
 
-import com.baomidou.mybatisplus.annotation.IdType;
-import com.baomidou.mybatisplus.annotation.TableField;
-import com.baomidou.mybatisplus.annotation.TableId;
-import com.baomidou.mybatisplus.annotation.TableLogic;
-import com.baomidou.mybatisplus.annotation.TableName;
-import java.io.Serializable;
-import java.util.Date;
+import com.baomidou.mybatisplus.annotation.*;
 import lombok.Data;
 
-/**
- * 帖子
- *
- * @author <a href="https://github.com/liyupi">程序员鱼皮</a>
- * @from <a href="https://yupi.icu">编程导航知识星球</a>
- */
-@TableName(value = "post")
-@Data
-public class Post implements Serializable {
+import java.io.Serializable;
+import java.util.Date;
 
+/**
+ * 题目
+ * @TableName question
+ */
+@TableName(value ="question")
+@Data
+public class Question implements Serializable {
     /**
      * id
      */
@@ -36,24 +30,24 @@ public class Post implements Serializable {
     private String content;
 
     /**
-     * 标签列表 json
+     * 标签列表（json 数组）
      */
     private String tags;
 
     /**
-     * 点赞数
+     * 推荐答案
      */
-    private Integer thumbNum;
-
-    /**
-     * 收藏数
-     */
-    private Integer favourNum;
+    private String answer;
 
     /**
      * 创建用户 id
      */
     private Long userId;
+
+    /**
+     * 编辑时间
+     */
+    private Date editTime;
 
     /**
      * 创建时间

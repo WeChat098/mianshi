@@ -21,6 +21,8 @@ import com.yhzhang.mianshiya.model.vo.LoginUserVO;
 import com.yhzhang.mianshiya.model.vo.UserVO;
 import com.yhzhang.mianshiya.service.UserService;
 
+import static com.yhzhang.mianshiya.service.impl.UserServiceImpl.SALT;
+
 import java.util.List;
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
@@ -40,13 +42,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import static com.yhzhang.mianshiya.service.impl.UserServiceImpl.SALT;
-
 /**
  * 用户接口
  *
- * @author <a href="https://github.com/liyupi">程序员鱼皮</a>
- * @from <a href="https://yupi.icu">编程导航知识星球</a>
  */
 @RestController
 @RequestMapping("/user")
