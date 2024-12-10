@@ -2,6 +2,10 @@ package com.yhzhang.mianshiya.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.yhzhang.mianshiya.model.entity.Question;
+import org.apache.ibatis.annotations.Select;
+
+import java.util.Date;
+import java.util.List;
 
 /**
 * @author ZYH-wins
@@ -10,7 +14,8 @@ import com.yhzhang.mianshiya.model.entity.Question;
 * @Entity generator.domain.Question
 */
 public interface QuestionMapper extends BaseMapper<Question> {
-
+    @Select("select * from question where updateTime >= #{date}")
+    List<Question> listQuestionWithDelete(Date date);
 }
 
 

@@ -1,6 +1,7 @@
 package com.yhzhang.mianshiya.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.jd.platform.hotkey.client.callback.JdHotKeyStore;
 import com.yhzhang.mianshiya.annotation.AuthCheck;
 import com.yhzhang.mianshiya.common.BaseResponse;
 import com.yhzhang.mianshiya.common.DeleteRequest;
@@ -9,21 +10,28 @@ import com.yhzhang.mianshiya.common.ResultUtils;
 import com.yhzhang.mianshiya.constant.UserConstant;
 import com.yhzhang.mianshiya.exception.BusinessException;
 import com.yhzhang.mianshiya.exception.ThrowUtils;
+import com.yhzhang.mianshiya.model.dto.question.QuestionQueryRequest;
 import com.yhzhang.mianshiya.model.dto.questionBank.QuestionBankAddRequest;
 import com.yhzhang.mianshiya.model.dto.questionBank.QuestionBankEditRequest;
 import com.yhzhang.mianshiya.model.dto.questionBank.QuestionBankQueryRequest;
 import com.yhzhang.mianshiya.model.dto.questionBank.QuestionBankUpdateRequest;
+import com.yhzhang.mianshiya.model.entity.Question;
 import com.yhzhang.mianshiya.model.entity.QuestionBank;
 import com.yhzhang.mianshiya.model.entity.User;
 import com.yhzhang.mianshiya.model.vo.QuestionBankVO;
+import com.yhzhang.mianshiya.model.vo.QuestionVO;
+import com.yhzhang.mianshiya.service.QuestionBankQuestionService;
 import com.yhzhang.mianshiya.service.QuestionBankService;
+import com.yhzhang.mianshiya.service.QuestionService;
 import com.yhzhang.mianshiya.service.UserService;
+import kotlin.jvm.Throws;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
+import java.util.Objects;
 
 /**
  * 题库接口
@@ -42,6 +50,9 @@ public class QuestionBankController {
     @Resource
     private UserService userService;
 
+    @Resource
+    private QuestionService questionService;
+
     // region 增删改查
 
     /**
@@ -53,21 +64,31 @@ public class QuestionBankController {
      */
     @PostMapping("/add")
     public BaseResponse<Long> addQuestionBank(@RequestBody QuestionBankAddRequest questionBankAddRequest, HttpServletRequest request) {
-        ThrowUtils.throwIf(questionBankAddRequest == null, ErrorCode.PARAMS_ERROR);
-        // todo 在此处将实体类和 DTO 进行转换
+//        ThrowUtils.throwIf(questionBankAddRequest == null, ErrorCode.PARAMS_ERROR);
+//        // todo 在此处将实体类和 DTO 进行转换
+//        QuestionBank questionBank = new QuestionBank();
+//        BeanUtils.copyProperties(questionBankAddRequest, questionBank);
+//        // 数据校验
+//        questionBankService.validQuestionBank(questionBank, true);
+//        // todo 填充默认值
+//        User loginUser = userService.getLoginUser(request);
+//        questionBank.setUserId(loginUser.getId());
+//        // 写入数据库
+//        boolean result = questionBankService.save(questionBank);
+//        ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
+//        // 返回新写入的数据 id
+//        long newQuestionBankId = questionBank.getId();
+//        return ResultUtils.success(newQuestionBankId);
+        // 判断用户输入的内容是否为空
+        ThrowUtils.throwIf(questionBankAddRequest == null,ErrorCode.PARAMS_ERROR);
+        // DTO 和 实体类进行转换
         QuestionBank questionBank = new QuestionBank();
         BeanUtils.copyProperties(questionBankAddRequest, questionBank);
-        // 数据校验
-        questionBankService.validQuestionBank(questionBank, true);
-        // todo 填充默认值
-        User loginUser = userService.getLoginUser(request);
-        questionBank.setUserId(loginUser.getId());
-        // 写入数据库
-        boolean result = questionBankService.save(questionBank);
-        ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
-        // 返回新写入的数据 id
-        long newQuestionBankId = questionBank.getId();
-        return ResultUtils.success(newQuestionBankId);
+        long id = userService.getLoginUser(request).getId();
+        questionBank.setId(id);
+        Boolean flag = questionBankService.save(questionBank);
+        ThrowUtils.throwIf(!flag,ErrorCode.OPERATION_ERROR);
+        return ResultUtils.success(questionBank.getUserId()); // 返回成功的结果
     }
 
     /**
@@ -79,32 +100,46 @@ public class QuestionBankController {
      */
     @PostMapping("/delete")
     public BaseResponse<Boolean> deleteQuestionBank(@RequestBody DeleteRequest deleteRequest, HttpServletRequest request) {
-        if (deleteRequest == null || deleteRequest.getId() <= 0) {
+//        if (deleteRequest == null || deleteRequest.getId() <= 0) {
+//            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+//        }
+//        User user = userService.getLoginUser(request);
+//        long id = deleteRequest.getId();
+//        // 判断是否存在
+//        QuestionBank oldQuestionBank = questionBankService.getById(id);
+//        ThrowUtils.throwIf(oldQuestionBank == null, ErrorCode.NOT_FOUND_ERROR);
+//        // 仅本人或管理员可删除
+//        if (!oldQuestionBank.getUserId().equals(user.getId()) && !userService.isAdmin(request)) {
+//            throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
+//        }
+//        // 操作数据库
+//        boolean result = questionBankService.removeById(id);
+//        ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
+//        return ResultUtils.success(true);
+        ThrowUtils.throwIf(deleteRequest == null,ErrorCode.PARAMS_ERROR);
+        ThrowUtils.throwIf(deleteRequest.getId() < 0,ErrorCode.PARAMS_ERROR);
+        // 验证是否存在
+        Long questionBankId = deleteRequest.getId();
+        boolean flag = questionBankService.getById(questionBankId) != null;
+        ThrowUtils.throwIf(!flag,ErrorCode.OPERATION_ERROR);
+        // 只有自己或者本人可以删除
+        User user = userService.getLoginUser(request);
+        if (!userService.isAdmin(request) || !Objects.equals(questionBankService.getById(questionBankId).getUserId(), user.getId())) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
-        User user = userService.getLoginUser(request);
-        long id = deleteRequest.getId();
-        // 判断是否存在
-        QuestionBank oldQuestionBank = questionBankService.getById(id);
-        ThrowUtils.throwIf(oldQuestionBank == null, ErrorCode.NOT_FOUND_ERROR);
-        // 仅本人或管理员可删除
-        if (!oldQuestionBank.getUserId().equals(user.getId()) && !userService.isAdmin(request)) {
-            throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
-        }
-        // 操作数据库
-        boolean result = questionBankService.removeById(id);
-        ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
+        questionBankService.removeById(questionBankId);
         return ResultUtils.success(true);
+
     }
 
     /**
      * 更新题库（仅管理员可用）
-     *
+     * 首先判断输入的内容是否为空，之后将dto类转换成为实体类 判断是否存在 操作数据库 判断是否成功 返回结果
      * @param questionBankUpdateRequest
      * @return
      */
     @PostMapping("/update")
-    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE) // 更新题库信息需要管理员才能进行操作
     public BaseResponse<Boolean> updateQuestionBank(@RequestBody QuestionBankUpdateRequest questionBankUpdateRequest) {
         if (questionBankUpdateRequest == null || questionBankUpdateRequest.getId() <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -127,17 +162,29 @@ public class QuestionBankController {
     /**
      * 根据 id 获取题库（封装类）
      *
-     * @param id
+     * @param
      * @return
      */
     @GetMapping("/get/vo")
-    public BaseResponse<QuestionBankVO> getQuestionBankVOById(long id, HttpServletRequest request) {
-        ThrowUtils.throwIf(id <= 0, ErrorCode.PARAMS_ERROR);
-        // 查询数据库
-        QuestionBank questionBank = questionBankService.getById(id);
-        ThrowUtils.throwIf(questionBank == null, ErrorCode.NOT_FOUND_ERROR);
-        // 获取封装类
-        return ResultUtils.success(questionBankService.getQuestionBankVO(questionBank, request));
+    public BaseResponse<QuestionBankVO> getQuestionBankVO(QuestionBankQueryRequest questionBankQueryRequest) {
+        ThrowUtils.throwIf(questionBankQueryRequest == null,ErrorCode.PARAMS_ERROR);
+        QuestionBank questionBank = questionBankService.getById(questionBankQueryRequest.getId());
+        boolean isNeed = questionBankQueryRequest.isNeedQueryQuestionList();
+        String key = "bank_detail_" + questionBankQueryRequest.getId();
+        if (JdHotKeyStore.isHotKey(key)) {
+            // 从本地缓存中读取值
+            Object o = JdHotKeyStore.get(key);
+            return ResultUtils.success((QuestionBankVO) o);
+        }
+        QuestionBankVO questionBankVO = new QuestionBankVO();
+        if (isNeed) {
+            QuestionQueryRequest questionQueryRequest1 = new QuestionQueryRequest();
+            questionQueryRequest1.setQuestionBankId(questionBankQueryRequest.getId());
+            Page<Question> page = questionService.listQuestionByPage(questionQueryRequest1);
+            questionBankVO.setQuestionPage(page);
+        }
+        JdHotKeyStore.smartSet(key, questionBankVO);
+        return ResultUtils.success(questionBankVO);
     }
 
     /**

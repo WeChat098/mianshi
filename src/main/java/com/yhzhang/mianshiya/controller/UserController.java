@@ -23,6 +23,7 @@ import com.yhzhang.mianshiya.service.UserService;
 
 import static com.yhzhang.mianshiya.service.impl.UserServiceImpl.SALT;
 
+import java.util.ArrayList;
 import java.util.List;
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
@@ -78,6 +79,18 @@ public class UserController {
         }
         long result = userService.userRegister(userAccount, userPassword, checkPassword);
         return ResultUtils.success(result);
+    }
+    @PostMapping("/add/sign_in")
+    public BaseResponse<User> adduserSignIn(HttpServletRequest request) {
+        User user = userService.getLoginUser(request);
+        boolean result = userService.addUserSignIn(user.getId());
+        return ResultUtils.success(user);
+    }
+    @GetMapping("/get/sign_in")
+    public BaseResponse<List<Integer>> getUserSignInRecord(Integer year,HttpServletRequest request) {
+        User user = userService.getLoginUser(request);
+        List<Integer> list = userService.getUsetSignInRecord(user.getId(), year);
+        return ResultUtils.success(list);
     }
 
     /**

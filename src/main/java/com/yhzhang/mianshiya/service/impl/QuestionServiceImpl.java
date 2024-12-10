@@ -1,34 +1,46 @@
 package com.yhzhang.mianshiya.service.impl;
 
 import cn.hutool.core.collection.CollUtil;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.yhzhang.mianshiya.common.ErrorCode;
 import com.yhzhang.mianshiya.constant.CommonConstant;
 import com.yhzhang.mianshiya.exception.ThrowUtils;
 import com.yhzhang.mianshiya.mapper.QuestionMapper;
+import com.yhzhang.mianshiya.model.dto.question.QuestionEsDTO;
 import com.yhzhang.mianshiya.model.dto.question.QuestionQueryRequest;
 import com.yhzhang.mianshiya.model.entity.Question;
-import com.yhzhang.mianshiya.model.entity.QuestionFavour;
-import com.yhzhang.mianshiya.model.entity.QuestionThumb;
+import com.yhzhang.mianshiya.model.entity.QuestionBankQuestion;
 import com.yhzhang.mianshiya.model.entity.User;
 import com.yhzhang.mianshiya.model.vo.QuestionVO;
 import com.yhzhang.mianshiya.model.vo.UserVO;
+import com.yhzhang.mianshiya.service.QuestionBankQuestionService;
 import com.yhzhang.mianshiya.service.QuestionService;
 import com.yhzhang.mianshiya.service.UserService;
 import com.yhzhang.mianshiya.utils.SqlUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.elasticsearch.index.query.BoolQueryBuilder;
+import org.elasticsearch.index.query.QueryBuilders;
+import org.elasticsearch.search.sort.SortBuilder;
+import org.elasticsearch.search.sort.SortBuilders;
+import org.elasticsearch.search.sort.SortOrder;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.elasticsearch.core.ElasticsearchRestTemplate;
+import org.springframework.data.elasticsearch.core.SearchHit;
+import org.springframework.data.elasticsearch.core.SearchHits;
+import org.springframework.data.elasticsearch.core.query.NativeSearchQuery;
+import org.springframework.data.elasticsearch.core.query.NativeSearchQueryBuilder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -44,6 +56,11 @@ public class QuestionServiceImpl extends ServiceImpl<QuestionMapper, Question> i
     @Resource
     private UserService userService;
 
+    @Resource
+    private QuestionBankQuestionService questionBankQuestionService;
+
+    @Resource
+    private ElasticsearchRestTemplate elasticsearchRestTemplate;
     /**
      * 校验数据
      *
@@ -140,20 +157,6 @@ public class QuestionServiceImpl extends ServiceImpl<QuestionMapper, Question> i
         // 2. 已登录，获取用户点赞、收藏状态
         long questionId = question.getId();
         User loginUser = userService.getLoginUserPermitNull(request);
-        if (loginUser != null) {
-            // 获取点赞
-            QueryWrapper<QuestionThumb> questionThumbQueryWrapper = new QueryWrapper<>();
-            questionThumbQueryWrapper.in("questionId", questionId);
-            questionThumbQueryWrapper.eq("userId", loginUser.getId());
-            QuestionThumb questionThumb = questionThumbMapper.selectOne(questionThumbQueryWrapper);
-            questionVO.setHasThumb(questionThumb != null);
-            // 获取收藏
-            QueryWrapper<QuestionFavour> questionFavourQueryWrapper = new QueryWrapper<>();
-            questionFavourQueryWrapper.in("questionId", questionId);
-            questionFavourQueryWrapper.eq("userId", loginUser.getId());
-            QuestionFavour questionFavour = questionFavourMapper.selectOne(questionFavourQueryWrapper);
-            questionVO.setHasFavour(questionFavour != null);
-        }
         // endregion
 
         return questionVO;
@@ -188,37 +191,102 @@ public class QuestionServiceImpl extends ServiceImpl<QuestionMapper, Question> i
         Map<Long, Boolean> questionIdHasThumbMap = new HashMap<>();
         Map<Long, Boolean> questionIdHasFavourMap = new HashMap<>();
         User loginUser = userService.getLoginUserPermitNull(request);
-        if (loginUser != null) {
-            Set<Long> questionIdSet = questionList.stream().map(Question::getId).collect(Collectors.toSet());
-            loginUser = userService.getLoginUser(request);
-            // 获取点赞
-            QueryWrapper<QuestionThumb> questionThumbQueryWrapper = new QueryWrapper<>();
-            questionThumbQueryWrapper.in("questionId", questionIdSet);
-            questionThumbQueryWrapper.eq("userId", loginUser.getId());
-            List<QuestionThumb> questionQuestionThumbList = questionThumbMapper.selectList(questionThumbQueryWrapper);
-            questionQuestionThumbList.forEach(questionQuestionThumb -> questionIdHasThumbMap.put(questionQuestionThumb.getQuestionId(), true));
-            // 获取收藏
-            QueryWrapper<QuestionFavour> questionFavourQueryWrapper = new QueryWrapper<>();
-            questionFavourQueryWrapper.in("questionId", questionIdSet);
-            questionFavourQueryWrapper.eq("userId", loginUser.getId());
-            List<QuestionFavour> questionFavourList = questionFavourMapper.selectList(questionFavourQueryWrapper);
-            questionFavourList.forEach(questionFavour -> questionIdHasFavourMap.put(questionFavour.getQuestionId(), true));
-        }
         // 填充信息
-        questionVOList.forEach(questionVO -> {
-            Long userId = questionVO.getUserId();
-            User user = null;
-            if (userIdUserListMap.containsKey(userId)) {
-                user = userIdUserListMap.get(userId).get(0);
-            }
-            questionVO.setUser(userService.getUserVO(user));
-            questionVO.setHasThumb(questionIdHasThumbMap.getOrDefault(questionVO.getId(), false));
-            questionVO.setHasFavour(questionIdHasFavourMap.getOrDefault(questionVO.getId(), false));
-        });
         // endregion
 
         questionVOPage.setRecords(questionVOList);
         return questionVOPage;
     }
 
-}
+    /**
+     * 从题库题目信息表中获取指定题库的所有题目信息
+     * @param questionQueryRequest
+     * @return
+     */
+    @Override
+    public Page<Question> listQuestionByPage(QuestionQueryRequest questionQueryRequest) {
+        ThrowUtils.throwIf(questionQueryRequest == null, ErrorCode.PARAMS_ERROR);
+
+        long currentsize = questionQueryRequest.getCurrent();
+        long size = questionQueryRequest.getPageSize();
+
+        long questionBandId = questionQueryRequest.getQuestionBankId(); // 获取题库id
+        QueryWrapper<QuestionBankQuestion> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("questionbankID", questionBandId);
+        List<QuestionBankQuestion> list1 = questionBankQuestionService.list(queryWrapper);
+        List<Long> questionIdList = list1.stream().map(QuestionBankQuestion::getQuestionId).collect(Collectors.toList());
+
+        QueryWrapper<Question> queryWrapper2 = new QueryWrapper<>();
+        queryWrapper2.in("id", questionIdList);
+
+        return this.page(new Page<>(currentsize, size), queryWrapper2);
+    }
+
+    @Override
+    public Page<Question> searchFromEs(QuestionQueryRequest questionQueryRequest) {
+        // 获取参数
+        Long id = questionQueryRequest.getId();
+        Long notId = questionQueryRequest.getNotId();
+        String searchText = questionQueryRequest.getSearchText();
+        List<String> tags = questionQueryRequest.getTags();
+        Long questionBankId = questionQueryRequest.getQuestionBankId();
+        Long userId = questionQueryRequest.getUserId();
+        // es的起始页是0
+        int curent = questionQueryRequest.getCurrent() - 1;
+        int pageSize = questionQueryRequest.getPageSize();
+        String sortField = questionQueryRequest.getSortField();
+        String sortOrder = questionQueryRequest.getSortOrder();
+        //构造查询条件
+        BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery();
+        boolQueryBuilder.filter(QueryBuilders.termQuery("isDelete", 0));
+        if (id != null) {
+            boolQueryBuilder.filter(QueryBuilders.termQuery("id", id));
+        }
+        if (notId != null) {
+            boolQueryBuilder.mustNot(QueryBuilders.termQuery("notId", notId));
+        }
+        if (userId != null) {
+            boolQueryBuilder.filter(QueryBuilders.termQuery("userId", userId));
+        }
+        if (questionBankId != null) {
+            boolQueryBuilder.filter(QueryBuilders.termQuery("questionBankId", questionBankId));
+        }
+        // 必须包含所有的标签
+        if (tags != null) {
+            for (String tag : tags) {
+                boolQueryBuilder.filter(QueryBuilders.termQuery("tags", tag));
+            }
+        }
+        // 按照关键词进行搜索
+        if (StringUtils.isNotBlank(searchText)) {
+            boolQueryBuilder.should(QueryBuilders.termQuery("title", searchText));
+            boolQueryBuilder.should(QueryBuilders.termQuery("content", searchText));
+            boolQueryBuilder.should(QueryBuilders.termQuery("answer", searchText));
+            boolQueryBuilder.minimumShouldMatch(1);
+        }
+//        // 排序
+//        SortBuilders<?> sortBuilders = SortBuilders.scoreSort();
+//        if (StringUtils.isNotBlank(sortField)) {}
+        // 分页
+        PageRequest pageRequest = PageRequest.of(curent, pageSize);
+        NativeSearchQuery searchQuery = new NativeSearchQueryBuilder()
+                .withQuery(boolQueryBuilder)
+                .withPageable(pageRequest)
+                .build();
+
+        SearchHits<QuestionEsDTO> searchHits = elasticsearchRestTemplate.search(searchQuery, QuestionEsDTO.class);
+        // 复用 MySQL / MyBatis Plus 的分页对象，封装返回结果
+        Page<Question> page = new Page<>();
+        page.setTotal(searchHits.getTotalHits());
+        List<Question> resourceList = new ArrayList<>();
+
+        if (searchHits.hasSearchHits()) {
+//            List<SearchHit<QuestionEsDTO>> searchHits1 = searchHits.getSearchHits();
+            for (SearchHit<QuestionEsDTO> one: searchHits) {
+                resourceList.add(QuestionEsDTO.dtoToObj(one.getContent()));
+            }
+        }
+        page.setRecords(resourceList);
+        return page;
+    }
+    }

@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.yhzhang.mianshiya.common.ErrorCode;
 import com.yhzhang.mianshiya.constant.CommonConstant;
+import com.yhzhang.mianshiya.constant.RedisConstant;
 import com.yhzhang.mianshiya.exception.BusinessException;
 import com.yhzhang.mianshiya.mapper.UserMapper;
 import com.yhzhang.mianshiya.model.dto.user.UserQueryRequest;
@@ -16,13 +17,22 @@ import com.yhzhang.mianshiya.model.vo.LoginUserVO;
 import com.yhzhang.mianshiya.model.vo.UserVO;
 import com.yhzhang.mianshiya.service.UserService;
 import com.yhzhang.mianshiya.utils.SqlUtils;
+
+import java.time.LocalDate;
+import java.time.Year;
 import java.util.ArrayList;
+import java.util.BitSet;
+import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 import javax.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import me.chanjar.weixin.common.bean.WxOAuth2UserInfo;
 import org.apache.commons.lang3.StringUtils;
+import org.joda.time.Years;
+import org.redisson.RedissonBitSet;
+import org.redisson.api.RBitSet;
+import org.redisson.api.RedissonClient;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.util.DigestUtils;
@@ -41,6 +51,11 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
      * 盐值，混淆密码
      */
     public static final String SALT = "yupi";
+    private final RedissonClient redissonClient;
+
+    public UserServiceImpl(RedissonClient redissonClient) {
+        this.redissonClient = redissonClient;
+    }
 
     @Override
     public long userRegister(String userAccount, String userPassword, String checkPassword) {
@@ -268,5 +283,37 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         queryWrapper.orderBy(SqlUtils.validSortField(sortField), sortOrder.equals(CommonConstant.SORT_ORDER_ASC),
                 sortField);
         return queryWrapper;
+    }
+
+    @Override
+    public boolean addUserSignIn(long userId) {
+        // 判断用户是否已经签到
+        // 获取当前是第几天
+        LocalDate date = LocalDate.now();
+        String key = RedisConstant.getUserSignInRedisKey(date.getYear(),userId);
+        RBitSet signInBitSet = redissonClient.getBitSet(key);
+        // 查看偏移量
+        int offset = date.getDayOfYear(); //获取当前是在一年的第几天
+        if (!signInBitSet.get(offset)) {
+            return signInBitSet.set(offset);
+        }
+        //设置签到
+        return true;
+    }
+
+    @Override
+    public List<Integer> getUsetSignInRecord(long userId, Integer year) {
+        //拼接用户的key
+        String key = RedisConstant.getUserSignInRedisKey(year,userId);
+        RBitSet SignInBitSet = redissonClient.getBitSet(key);
+        BitSet tempBitset = SignInBitSet.asBitSet();
+        List<Integer> list = new ArrayList<>();
+        int days = Year.of(year).length();
+        for (int i = 1;i < days; i++) {
+            if (tempBitset.get(i)) {
+                list.add(i);
+            }
+        }
+        return list;
     }
 }

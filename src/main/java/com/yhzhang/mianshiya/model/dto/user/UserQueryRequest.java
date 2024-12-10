@@ -24,9 +24,6 @@ public class UserQueryRequest extends PageRequest implements Serializable {
      * id
      */
     private Long id;
-
-
-
     /**
      * 微信开放平台id
      */
@@ -36,6 +33,7 @@ public class UserQueryRequest extends PageRequest implements Serializable {
      * 公众号openId
      */
     private String mpOpenId;
+    private String userProfile;
 
     /**
      * 用户昵称

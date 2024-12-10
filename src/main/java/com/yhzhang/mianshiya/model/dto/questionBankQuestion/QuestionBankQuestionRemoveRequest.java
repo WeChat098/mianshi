@@ -13,7 +13,6 @@ public class QuestionBankQuestionRemoveRequest implements Serializable {
      * 题库 id
      */
     private Long questionBankId;
-
     /**
      * 题目 id
      */

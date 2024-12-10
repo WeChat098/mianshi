@@ -1,6 +1,8 @@
 package com.yhzhang.mianshiya.model.vo;
 
 import cn.hutool.json.JSONUtil;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.yhzhang.mianshiya.model.entity.Question;
 import com.yhzhang.mianshiya.model.entity.QuestionBank;
 import lombok.Data;
 import org.springframework.beans.BeanUtils;
@@ -52,6 +54,8 @@ public class QuestionBankVO implements Serializable {
      * 标签列表
      */
     private List<String> tagList;
+
+    private Page<Question> questionPage;
 
     /**
      * 创建用户信息

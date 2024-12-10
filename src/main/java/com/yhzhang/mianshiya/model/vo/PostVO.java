@@ -5,6 +5,8 @@ import com.yhzhang.mianshiya.model.entity.Post;
 import java.io.Serializable;
 import java.util.Date;
 import java.util.List;
+
+import io.grpc.internal.JsonUtil;
 import lombok.Data;
 import org.springframework.beans.BeanUtils;
 
@@ -106,7 +108,7 @@ public class PostVO implements Serializable {
         }
         PostVO postVO = new PostVO();
         BeanUtils.copyProperties(post, postVO);
-        postVO.setTagList(JSONUtil.toList(post.getTags(), String.class));
+        postVO.setTagList(JSONUtil.toList(JSONUtil.parseArray(post), String.class));
         return postVO;
     }
 }
