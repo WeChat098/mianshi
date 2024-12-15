@@ -1,5 +1,11 @@
 package com.yhzhang.mianshiya.controller;
 
+import com.alibaba.csp.sentinel.Entry;
+import com.alibaba.csp.sentinel.EntryType;
+import com.alibaba.csp.sentinel.SphU;
+import com.alibaba.csp.sentinel.Tracer;
+import com.alibaba.csp.sentinel.slots.block.BlockException;
+import com.alibaba.csp.sentinel.slots.block.degrade.DegradeException;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.yhzhang.mianshiya.annotation.AuthCheck;
 import com.yhzhang.mianshiya.common.BaseResponse;
@@ -164,18 +170,54 @@ public class QuestionController {
      * @param request
      * @return
      */
+//    @PostMapping("/list/page/vo")
+//    public BaseResponse<Page<QuestionVO>> listQuestionVOByPage(@RequestBody QuestionQueryRequest questionQueryRequest,
+//                                                               HttpServletRequest request) {
+//        long current = questionQueryRequest.getCurrent();
+//        long size = questionQueryRequest.getPageSize();
+//        // 限制爬虫
+//        ThrowUtils.throwIf(size > 20, ErrorCode.PARAMS_ERROR);
+//        // 查询数据库
+//        Page<Question> questionPage = questionService.page(new Page<>(current, size),
+//                questionService.getQueryWrapper(questionQueryRequest));
+//        // 获取封装类
+//        return ResultUtils.success(questionService.getQuestionVOPage(questionPage, request));
+//    }
+
     @PostMapping("/list/page/vo")
-    public BaseResponse<Page<QuestionVO>> listQuestionVOByPage(@RequestBody QuestionQueryRequest questionQueryRequest,
-                                                               HttpServletRequest request) {
+    public BaseResponse listQuestionVOByPage(@RequestBody QuestionQueryRequest questionQueryRequest,
+                                             HttpServletRequest request) {
         long current = questionQueryRequest.getCurrent();
         long size = questionQueryRequest.getPageSize();
         // 限制爬虫
-        ThrowUtils.throwIf(size > 20, ErrorCode.PARAMS_ERROR);
-        // 查询数据库
-        Page<Question> questionPage = questionService.page(new Page<>(current, size),
-                questionService.getQueryWrapper(questionQueryRequest));
-        // 获取封装类
-        return ResultUtils.success(questionService.getQuestionVOPage(questionPage, request));
+        String ipaddress = request.getRemoteAddr();
+        Entry entry = null;
+        try {
+            entry = SphU.entry("listQuestionVOByPage", EntryType.IN,1,ipaddress);
+            ThrowUtils.throwIf(size > 20, ErrorCode.PARAMS_ERROR);
+            // 查询数据库
+            Page<Question> questionPage = questionService.page(new Page<>(current, size),
+                    questionService.getQueryWrapper(questionQueryRequest));
+            // 获取封装类
+            return ResultUtils.success(questionService.getQuestionVOPage(questionPage, request));
+        }catch (Throwable ex) {
+            if (!BlockException.isBlockException(ex)) {
+                Tracer.trace(ex);
+                return ResultUtils.error(ErrorCode.PARAMS_ERROR,"系统内部发生错误");
+            }
+            if (ex instanceof DegradeException) { // 降级操作
+                return fallback(questionQueryRequest,request,ex);
+            }
+            return ResultUtils.error(ErrorCode.PARAMS_ERROR,"当前发生限流操作");
+        }finally {
+            if (entry != null) {
+                entry.exit(1,ipaddress);
+            }
+        }
+
+    }
+    public BaseResponse<Page<QuestionVO>>fallback(QuestionQueryRequest questionQueryRequest, HttpServletRequest request, Throwable exception){
+        return ResultUtils.error(ErrorCode.PARAMS_ERROR,"系统压力过大，请稍后再试，发生降级");
     }
 
     /**

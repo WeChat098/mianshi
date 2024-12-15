@@ -1,5 +1,11 @@
 package com.yhzhang.mianshiya.controller;
 
+import com.alibaba.csp.sentinel.Entry;
+import com.alibaba.csp.sentinel.EntryType;
+import com.alibaba.csp.sentinel.SphU;
+import com.alibaba.csp.sentinel.annotation.SentinelResource;
+import com.alibaba.csp.sentinel.slots.block.BlockException;
+import com.alibaba.csp.sentinel.slots.block.degrade.DegradeException;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.jd.platform.hotkey.client.callback.JdHotKeyStore;
 import com.yhzhang.mianshiya.annotation.AuthCheck;
@@ -205,24 +211,78 @@ public class QuestionBankController {
     }
 
     /**
-     * 分页获取题库列表（封装类）
+     * 分页获取题库列表（封装类） 这个方法暂时没有实现对ip地址的限流访问
      *
      * @param questionBankQueryRequest
      * @param request
      * @return
      */
+//    @PostMapping("/list/page/vo")
+//    @SentinelResource(value = "listQuestionBankVOByPage"
+//            , blockHandler = "blockHandler"
+//            , fallback = "fallback"
+//            , exceptionsToIgnore = {IllegalArgumentException.class})
+//    public BaseResponse<Page<QuestionBankVO>> listQuestionBankVOByPage(@RequestBody QuestionBankQueryRequest questionBankQueryRequest,
+//                                                               HttpServletRequest request) {
+//        long current = questionBankQueryRequest.getCurrent();
+//        long size = questionBankQueryRequest.getPageSize();
+//        // 限制爬虫
+//        ThrowUtils.throwIf(size > 20, ErrorCode.PARAMS_ERROR);
+//        // 查询数据库
+//        Page<QuestionBank> questionBankPage = questionBankService.page(new Page<>(current, size),
+//                questionBankService.getQueryWrapper(questionBankQueryRequest));
+//        // 获取封装类
+//        return ResultUtils.success(questionBankService.getQuestionBankVOPage(questionBankPage, request));
+//    }
     @PostMapping("/list/page/vo")
+    @SentinelResource(value = "listQuestionBankVOByPage"
+            , blockHandler = "blockHandler"
+            , fallback = "fallback"
+            , exceptionsToIgnore = {IllegalArgumentException.class})
     public BaseResponse<Page<QuestionBankVO>> listQuestionBankVOByPage(@RequestBody QuestionBankQueryRequest questionBankQueryRequest,
-                                                               HttpServletRequest request) {
+                                                                       HttpServletRequest request) {
         long current = questionBankQueryRequest.getCurrent();
         long size = questionBankQueryRequest.getPageSize();
         // 限制爬虫
         ThrowUtils.throwIf(size > 20, ErrorCode.PARAMS_ERROR);
         // 查询数据库
-        Page<QuestionBank> questionBankPage = questionBankService.page(new Page<>(current, size),
-                questionBankService.getQueryWrapper(questionBankQueryRequest));
-        // 获取封装类
-        return ResultUtils.success(questionBankService.getQuestionBankVOPage(questionBankPage, request));
+        String ipAddress = request.getRemoteAddr();
+        log.info("ipAddress:{}",ipAddress);
+        Entry entry = null;
+        try {
+            entry = SphU.entry("listQuestionBankVOByPage", EntryType.IN,1,ipAddress);
+            Page<QuestionBank> questionBankPage = questionBankService.page(new Page<>(current, size),
+                    questionBankService.getQueryWrapper(questionBankQueryRequest));
+            // 获取封装类
+            return ResultUtils.success(questionBankService.getQuestionBankVOPage(questionBankPage, request));
+
+        }catch (BlockException e) {
+            if (e instanceof DegradeException) {
+                return fallback(questionBankQueryRequest,request,e);
+            }
+            return ResultUtils.error(ErrorCode.PARAMS_ERROR,"系统压力过大，请稍后再试,发生熔断");
+        } finally {
+            if (entry != null) {
+                entry.exit(1,ipAddress);
+            }
+        }
+    }
+
+
+
+
+
+
+    public BaseResponse<Page<QuestionBankVO>> blockHandler(QuestionBankQueryRequest questionBankQueryRequest, HttpServletRequest request, BlockException ex) {
+        log.error("blockHandler");
+        if (ex instanceof DegradeException) {
+            return fallback(questionBankQueryRequest,request,ex);
+        }
+        return ResultUtils.error(ErrorCode.PARAMS_ERROR,"系统压力过大，请稍后再试,发生熔断");
+    }
+    public BaseResponse<Page<QuestionBankVO>> fallback(QuestionBankQueryRequest questionBankQueryRequest, HttpServletRequest request, Throwable ex) {
+        log.error("fallback");
+        return ResultUtils.error(ErrorCode.PARAMS_ERROR,"系统压力过大，请稍后再试，发生降级");
     }
 
     /**
